@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Semester Registration Portal</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="login-page">
+  <main class="auth-container">
+    <section class="login-card">
+      <h1>Student Registration Portal</h1>
+      <p class="subtitle">Login to manage your semester registration.</p>
+
+      <form id="loginForm" novalidate>
+        <label for="rollNo">Roll Number</label>
+        <input id="rollNo" name="rollNo" type="text" placeholder="Enter roll number" autocomplete="username" required>
+
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" placeholder="Enter password" autocomplete="current-password" required>
+
+        <button class="btn primary full-width" type="submit">Login</button>
+      </form>
+
+      <p id="loginMessage" class="message" aria-live="polite"></p>
+      <p class="demo-note">Demo: IT101 / student123</p>
+    </section>
+  </main>
+  <script src="/js/login.js"></script>
+</body>
+</html>

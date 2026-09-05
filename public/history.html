@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Registration History</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Student Registration Portal</div>
+    <button id="logoutBtn" class="btn secondary">Logout</button>
+  </header>
+
+  <main class="container">
+    <div class="page-heading">
+      <div>
+        <h1>Registration History</h1>
+        <p>Your semester registration records.</p>
+      </div>
+      <a href="/dashboard.html" class="btn secondary">Back to Dashboard</a>
+    </div>
+
+    <section class="panel">
+      <div class="table-wrapper">
+        <table>
+          <thead>
+            <tr>
+              <th>Registration ID</th>
+              <th>Academic Year</th>
+              <th>Semester</th>
+              <th>Registration Date</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="historyBody"></tbody>
+        </table>
+      </div>
+      <p id="historyMessage" class="message" aria-live="polite"></p>
+    </section>
+  </main>
+  <script src="/js/history.js"></script>
+</body>
+</html>

@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Semester Registration</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">Student Registration Portal</div>
+    <button id="logoutBtn" class="btn secondary">Logout</button>
+  </header>
+
+  <main class="container">
+    <div class="page-heading">
+      <div>
+        <h1>Semester Registration</h1>
+        <p>Select courses for your current semester.</p>
+      </div>
+      <a href="/dashboard.html" class="btn secondary">Back to Dashboard</a>
+    </div>
+
+    <section class="panel">
+      <div class="info-grid">
+        <div><span>Student Name</span><strong id="studentName">-</strong></div>
+        <div><span>Roll Number</span><strong id="studentRollNo">-</strong></div>
+        <div><span>Department</span><strong id="studentDepartment">-</strong></div>
+        <div><span>Current Semester</span><strong id="studentSemester">-</strong></div>
+        <div><span>Academic Year</span><strong id="academicYear">-</strong></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="section-row">
+        <div>
+          <h2>Available Courses</h2>
+          <p>Select the courses you want to register.</p>
+        </div>
+      </div>
+
+      <form id="registrationForm">
+        <div id="courseList" class="course-list"></div>
+        <p id="registrationMessage" class="message" aria-live="polite"></p>
+        <button class="btn primary" type="submit">Submit Registration</button>
+      </form>
+    </section>
+
+    <section id="successPanel" class="panel success-panel hidden">
+      <h2>✓ Registration Successful</h2>
+      <div class="confirmation-grid">
+        <div><span>Registration ID</span><strong id="confirmationId">-</strong></div>
+        <div><span>Registration Date</span><strong id="confirmationDate">-</strong></div>
+        <div><span>Semester</span><strong id="confirmationSemester">-</strong></div>
+        <div><span>Academic Year</span><strong id="confirmationYear">-</strong></div>
+        <div><span>Status</span><strong id="confirmationStatus">Registered</strong></div>
+      </div>
+      <div class="action-row">
+        <a id="downloadPdfBtn" class="btn primary" href="#">Download Registration PDF</a>
+        <a class="btn secondary" href="/dashboard.html">Back to Dashboard</a>
+      </div>
+    </section>
+  </main>
+  <script src="/js/registration.js"></script>
+</body>
+</html>
