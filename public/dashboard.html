@@ -1,55 +1,146 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
   <title>Dashboard - Student Registration Portal</title>
+
   <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
+
   <header class="topbar">
-    <div class="brand">Student Registration Portal</div>
-    <button id="logoutBtn" class="btn secondary">Logout</button>
+
+    <div class="brand">
+      Student Registration Portal
+    </div>
+
+    <button
+      id="logoutBtn"
+      class="btn secondary"
+      type="button"
+    >
+      Logout
+    </button>
+
   </header>
 
   <main class="container">
+
     <div class="page-heading">
+
       <div>
         <h1>Dashboard</h1>
         <p id="welcomeText">Welcome</p>
       </div>
+
     </div>
 
+
+    <!-- Student Information -->
+
     <section class="panel">
+
       <h2>Student Information</h2>
+
       <div class="info-grid">
-        <div><span>Name</span><strong id="studentName">-</strong></div>
-        <div><span>Roll Number</span><strong id="studentRollNo">-</strong></div>
-        <div><span>Department</span><strong id="studentDepartment">-</strong></div>
-        <div><span>Current Semester</span><strong id="studentSemester">-</strong></div>
+
+        <div>
+          <span>Name</span>
+          <strong id="studentName">-</strong>
+        </div>
+
+        <div>
+          <span>Roll Number</span>
+          <strong id="studentRollNo">-</strong>
+        </div>
+
+        <div>
+          <span>Department</span>
+          <strong id="studentDepartment">-</strong>
+        </div>
+
+        <div>
+          <span>Current Semester</span>
+          <strong id="studentSemester">-</strong>
+        </div>
+
       </div>
+
     </section>
+
+
+    <!-- Registration Status -->
 
     <section class="panel status-panel">
+
       <div>
+
         <h2>Registration Status</h2>
-        <span id="registrationStatus" class="status-badge">Not Registered</span>
+
+        <span
+          id="registrationStatus"
+          class="status-badge"
+        >
+          Not Registered
+        </span>
+
       </div>
-      <a id="registerBtn" class="btn primary" href="/registration.html">Register for Semester</a>
+
+      <a
+        id="registerBtn"
+        class="btn primary"
+        href="/registration.html"
+      >
+        Register for Semester
+      </a>
+
     </section>
+
+
+    <!-- Registration History -->
 
     <section class="panel">
+
       <div class="section-row">
+
         <div>
+
           <h2>Registration History</h2>
-          <p>View your previous semester registrations.</p>
+
+          <p>
+            View your previous semester registrations.
+          </p>
+
         </div>
-        <a class="btn secondary" href="/history.html">View History</a>
+
+        <a
+          class="btn secondary"
+          href="/history.html"
+        >
+          View History
+        </a>
+
       </div>
+
     </section>
 
-    <p id="dashboardMessage" class="message" aria-live="polite"></p>
+
+    <!-- Dashboard Messages -->
+
+    <p
+      id="dashboardMessage"
+      class="message"
+      aria-live="polite"
+    ></p>
+
   </main>
+
+
   <script src="/js/dashboard.js"></script>
+
 </body>
 </html>

@@ -1,3 +1,7 @@
+-- =========================================================
+-- CREATE DATABASE
+-- =========================================================
+
 CREATE DATABASE IF NOT EXISTS student_registration;
 
 USE student_registration;
@@ -8,13 +12,14 @@ USE student_registration;
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS students (
+
     id INT AUTO_INCREMENT PRIMARY KEY,
 
-    roll_no VARCHAR(30) UNIQUE NOT NULL,
+    roll_no VARCHAR(30) NOT NULL UNIQUE,
 
     name VARCHAR(100) NOT NULL,
 
-    email VARCHAR(150) UNIQUE NOT NULL,
+    email VARCHAR(150) NOT NULL UNIQUE,
 
     password_hash VARCHAR(255) NOT NULL,
 
@@ -22,10 +27,12 @@ CREATE TABLE IF NOT EXISTS students (
 
     semester INT NOT NULL,
 
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP NOT NULL
+        DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT chk_student_semester
         CHECK (semester BETWEEN 1 AND 8)
+
 );
 
 
@@ -34,9 +41,10 @@ CREATE TABLE IF NOT EXISTS students (
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS courses (
+
     id INT AUTO_INCREMENT PRIMARY KEY,
 
-    course_code VARCHAR(30) UNIQUE NOT NULL,
+    course_code VARCHAR(30) NOT NULL UNIQUE,
 
     course_name VARCHAR(150) NOT NULL,
 
@@ -49,6 +57,7 @@ CREATE TABLE IF NOT EXISTS courses (
 
     CONSTRAINT chk_course_semester
         CHECK (semester BETWEEN 1 AND 8)
+
 );
 
 
@@ -57,9 +66,10 @@ CREATE TABLE IF NOT EXISTS courses (
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS registrations (
+
     id INT AUTO_INCREMENT PRIMARY KEY,
 
-    registration_id VARCHAR(50) UNIQUE NOT NULL,
+    registration_id VARCHAR(50) NOT NULL UNIQUE,
 
     student_id INT NOT NULL,
 
@@ -82,7 +92,12 @@ CREATE TABLE IF NOT EXISTS registrations (
         ON DELETE CASCADE,
 
     CONSTRAINT unique_student_semester_registration
-        UNIQUE (student_id, academic_year, semester)
+        UNIQUE (
+            student_id,
+            academic_year,
+            semester
+        )
+
 );
 
 
@@ -91,6 +106,7 @@ CREATE TABLE IF NOT EXISTS registrations (
 -- =========================================================
 
 CREATE TABLE IF NOT EXISTS registration_courses (
+
     id INT AUTO_INCREMENT PRIMARY KEY,
 
     registration_id INT NOT NULL,
@@ -108,7 +124,11 @@ CREATE TABLE IF NOT EXISTS registration_courses (
         ON DELETE RESTRICT,
 
     CONSTRAINT unique_registration_course
-        UNIQUE (registration_id, course_id)
+        UNIQUE (
+            registration_id,
+            course_id
+        )
+
 );
 
 

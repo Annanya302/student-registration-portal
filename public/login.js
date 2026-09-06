@@ -20,34 +20,34 @@ loginForm.addEventListener('submit', async (event) => {
 
     // Basic validation
     if (!rollNo || !password) {
-        loginMessage.textContent = 'Please enter Roll Number and Password.';
+        loginMessage.textContent =
+            'Please enter Roll Number and Password.';
         loginMessage.classList.add('error');
         return;
     }
 
     try {
-        // Send login request to backend
         const response = await fetch('/api/login', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({
-                rollNo: rollNo,
-                password: password
+                rollNo,
+                password
             })
         });
 
-        // Get server response as text first
+        // Read response as text first
         const responseText = await response.text();
 
         let data;
 
-        // Convert response to JSON safely
+        // Safely parse JSON
         try {
-            data = JSON.parse(responseText);
-        } catch (jsonError) {
-            console.error('Invalid JSON response from server:');
+            data = responseText ? JSON.parse(responseText) : {};
+        } catch (error) {
+            console.error('Server response was not valid JSON:');
             console.error(responseText);
 
             throw new Error(
@@ -55,29 +55,27 @@ loginForm.addEventListener('submit', async (event) => {
             );
         }
 
-        // Login failed
+        // Handle failed login
         if (!response.ok) {
-            throw new Error(data.message || 'Invalid Roll Number or Password.');
+            throw new Error(
+                data.message || 'Invalid Roll Number or Password.'
+            );
         }
 
-        // Make sure token exists
+        // Make sure authentication token exists
         if (!data.token) {
-            throw new Error('Login successful, but authentication token was not received.');
+            throw new Error(
+                'Login successful, but authentication token was not received.'
+            );
         }
 
         // Save authentication token
         localStorage.setItem('authToken', data.token);
 
-        // Optional: save student information
-        if (data.student) {
-            localStorage.setItem(
-                'student',
-                JSON.stringify(data.student)
-            );
-        }
-
         // Show success message
-        loginMessage.textContent = data.message || 'Login successful!';
+        loginMessage.textContent =
+            data.message || 'Login successful!';
+
         loginMessage.className = 'message success';
 
         // Redirect to dashboard
@@ -89,7 +87,8 @@ loginForm.addEventListener('submit', async (event) => {
         console.error('Login error:', error);
 
         loginMessage.textContent =
-            error.message || 'Unable to login. Please try again.';
+            error.message ||
+            'Unable to login. Please try again.';
 
         loginMessage.className = 'message error';
     }
