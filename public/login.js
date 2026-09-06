@@ -1,35 +1,96 @@
 const loginForm = document.getElementById('loginForm');
 const loginMessage = document.getElementById('loginMessage');
 
+// If already logged in, go directly to dashboard
 if (localStorage.getItem('authToken')) {
-  window.location.href = '/dashboard.html';
+    window.location.href = '/dashboard.html';
 }
 
+// Handle login form submission
 loginForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  loginMessage.textContent = '';
-  loginMessage.className = 'message';
+    event.preventDefault();
 
-  const rollNo = document.getElementById('rollNo').value.trim();
-  const password = document.getElementById('password').value;
+    // Clear previous message
+    loginMessage.textContent = '';
+    loginMessage.className = 'message';
 
-  try {
-    const response = await fetch('/api/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ rollNo, password })
-    });
+    // Get form values
+    const rollNo = document.getElementById('rollNo').value.trim();
+    const password = document.getElementById('password').value;
 
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.message || 'Login failed.');
+    // Basic validation
+    if (!rollNo || !password) {
+        loginMessage.textContent = 'Please enter Roll Number and Password.';
+        loginMessage.classList.add('error');
+        return;
     }
 
-    localStorage.setItem('authToken', data.token);
-    window.location.href = '/dashboard.html';
-  } catch (error) {
-    loginMessage.textContent = error.message;
-    loginMessage.classList.add('error');
-  }
+    try {
+        // Send login request to backend
+        const response = await fetch('/api/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                rollNo: rollNo,
+                password: password
+            })
+        });
+
+        // Get server response as text first
+        const responseText = await response.text();
+
+        let data;
+
+        // Convert response to JSON safely
+        try {
+            data = JSON.parse(responseText);
+        } catch (jsonError) {
+            console.error('Invalid JSON response from server:');
+            console.error(responseText);
+
+            throw new Error(
+                `Server returned an invalid response. Status: ${response.status}`
+            );
+        }
+
+        // Login failed
+        if (!response.ok) {
+            throw new Error(data.message || 'Invalid Roll Number or Password.');
+        }
+
+        // Make sure token exists
+        if (!data.token) {
+            throw new Error('Login successful, but authentication token was not received.');
+        }
+
+        // Save authentication token
+        localStorage.setItem('authToken', data.token);
+
+        // Optional: save student information
+        if (data.student) {
+            localStorage.setItem(
+                'student',
+                JSON.stringify(data.student)
+            );
+        }
+
+        // Show success message
+        loginMessage.textContent = data.message || 'Login successful!';
+        loginMessage.className = 'message success';
+
+        // Redirect to dashboard
+        setTimeout(() => {
+            window.location.href = '/dashboard.html';
+        }, 500);
+
+    } catch (error) {
+        console.error('Login error:', error);
+
+        loginMessage.textContent =
+            error.message || 'Unable to login. Please try again.';
+
+        loginMessage.className = 'message error';
+    }
 });
