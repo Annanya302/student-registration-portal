@@ -18,6 +18,7 @@ permissions:
 # ============================================================
 
 jobs:
+
   test:
     name: Build and Validate
     runs-on: ubuntu-latest
@@ -49,14 +50,14 @@ jobs:
 
 
       # --------------------------------------------------------
-      # Check JavaScript syntax
+      # Check server.js syntax
       # --------------------------------------------------------
       - name: Check server.js syntax
         run: node --check server.js
 
 
       # --------------------------------------------------------
-      # Run tests if package.json contains tests
+      # Run tests if available
       # --------------------------------------------------------
       - name: Run tests if available
         run: npm test --if-present
@@ -70,14 +71,45 @@ jobs:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
-    # Deployment only happens if CI succeeds
+    # Deploy only if CI job succeeds
     needs: test
 
     steps:
 
-      # --------------------------------------------------------
-      # Configure AWS credentials using GitHub OIDC
-      # --------------------------------------------------------
+      # ======================================================
+      # TEMPORARY OIDC DEBUGGING
+      # ======================================================
+      #
+      # This step is added to find the exact OIDC claims
+      # GitHub is sending to AWS.
+      #
+      # IMPORTANT:
+      # Do NOT print the complete OIDC token.
+      #
+      # ======================================================
+
+      - name: Debug OIDC claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+
+            const payload = JSON.parse(
+              Buffer.from(token.split('.')[1], 'base64url').toString()
+            );
+
+            console.log("OIDC issuer:", payload.iss);
+            console.log("OIDC audience:", payload.aud);
+            console.log("OIDC subject:", payload.sub);
+            console.log("Repository:", payload.repository);
+            console.log("Repository ID:", payload.repository_id);
+            console.log("Repository owner ID:", payload.repository_owner_id);
+
+
+      # ======================================================
+      # CONFIGURE AWS CREDENTIALS
+      # ======================================================
+
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -85,18 +117,20 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
 
-      # --------------------------------------------------------
-      # Verify that GitHub successfully authenticated with AWS
-      # --------------------------------------------------------
+      # ======================================================
+      # VERIFY AWS AUTHENTICATION
+      # ======================================================
+
       - name: Verify AWS identity
         run: |
           echo "AWS authentication successful."
           aws sts get-caller-identity
 
 
-      # --------------------------------------------------------
-      # Deploy application using AWS Systems Manager
-      # --------------------------------------------------------
+      # ======================================================
+      # DEPLOY TO EC2 USING SSM
+      # ======================================================
+
       - name: Deploy to EC2 using SSM
         shell: bash
         run: |
@@ -104,6 +138,11 @@ jobs:
           echo "=========================================="
           echo "Starting deployment"
           echo "=========================================="
+
+
+          # --------------------------------------------------
+          # Send deployment command to EC2 instances
+          # --------------------------------------------------
 
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -139,6 +178,7 @@ jobs:
             --query "Command.CommandId" \
             --output text)
 
+
           echo "SSM Command ID: $COMMAND_ID"
 
           echo "=========================================="
@@ -146,9 +186,9 @@ jobs:
           echo "=========================================="
 
 
-          # ----------------------------------------------------
-          # Wait until SSM finishes
-          # ----------------------------------------------------
+          # ==================================================
+          # WAIT FOR SSM DEPLOYMENT
+          # ==================================================
 
           while true; do
 
@@ -184,16 +224,18 @@ jobs:
 
 
             # ------------------------------------------------
-            # Check whether all commands succeeded
+            # Check whether deployment succeeded
             # ------------------------------------------------
 
             if [ -n "$STATUS_OUTPUT" ] && \
-               ! echo "$STATUS_OUTPUT" | grep -qE \
-               "Pending|InProgress|Delayed|Cancelling"; then
+              ! echo "$STATUS_OUTPUT" | grep -qE \
+              "Pending|InProgress|Delayed|Cancelling"; then
 
               if ! echo "$STATUS_OUTPUT" | grep -q "Success"; then
 
+                echo "=========================================="
                 echo "Deployment did not complete successfully."
+                echo "=========================================="
 
                 aws ssm list-command-invocations \
                   --command-id "$COMMAND_ID" \
@@ -220,22 +262,25 @@ jobs:
           done
 
 
-      # --------------------------------------------------------
-      # Final success message
-      # --------------------------------------------------------
+      # ======================================================
+      # FINAL SUCCESS MESSAGE
+      # ======================================================
+
       - name: Deployment successful
         run: |
+
           echo ""
           echo "=========================================="
           echo " Student Registration Portal Deployed!"
           echo "=========================================="
           echo ""
+
           echo "Deployment flow:"
           echo "GitHub"
           echo "   ↓"
           echo "GitHub Actions"
           echo "   ↓"
-          echo "OIDC"
+          echo "GitHub OIDC"
           echo "   ↓"
           echo "AWS IAM Role"
           echo "   ↓"
@@ -245,4 +290,5 @@ jobs:
           echo "   ↓"
           echo "Node.js Application"
           echo ""
+
           echo "Deployment completed successfully."
