@@ -7,17 +7,24 @@ on:
 
   workflow_dispatch:
 
-# Required for GitHub OIDC
+# ============================================================
+# GITHUB PERMISSIONS
+# ============================================================
+
 permissions:
   contents: read
   id-token: write
 
 
 # ============================================================
-# CI JOB
+# JOBS
 # ============================================================
 
 jobs:
+
+  # ==========================================================
+  # CI JOB
+  # ==========================================================
 
   test:
     name: Build and Validate
@@ -25,16 +32,18 @@ jobs:
 
     steps:
 
-      # --------------------------------------------------------
-      # Checkout GitHub repository
-      # --------------------------------------------------------
+      # ------------------------------------------------------
+      # Checkout repository
+      # ------------------------------------------------------
+
       - name: Checkout code
         uses: actions/checkout@v4
 
 
-      # --------------------------------------------------------
+      # ------------------------------------------------------
       # Setup Node.js
-      # --------------------------------------------------------
+      # ------------------------------------------------------
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -42,49 +51,53 @@ jobs:
           cache: npm
 
 
-      # --------------------------------------------------------
+      # ------------------------------------------------------
       # Install dependencies
-      # --------------------------------------------------------
+      # ------------------------------------------------------
+
       - name: Install dependencies
         run: npm ci
 
 
-      # --------------------------------------------------------
+      # ------------------------------------------------------
       # Check server.js syntax
-      # --------------------------------------------------------
+      # ------------------------------------------------------
+
       - name: Check server.js syntax
         run: node --check server.js
 
 
-      # --------------------------------------------------------
+      # ------------------------------------------------------
       # Run tests if available
-      # --------------------------------------------------------
+      # ------------------------------------------------------
+
       - name: Run tests if available
         run: npm test --if-present
 
 
-# ============================================================
-# CD JOB
-# ============================================================
+  # ==========================================================
+  # CD JOB
+  # ==========================================================
 
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
-    # Deploy only if CI job succeeds
+    # Deploy only after CI succeeds
     needs: test
 
     steps:
 
       # ======================================================
-      # TEMPORARY OIDC DEBUGGING
+      # DEBUG GITHUB OIDC CLAIMS
       # ======================================================
       #
-      # This step is added to find the exact OIDC claims
-      # GitHub is sending to AWS.
+      # TEMPORARY STEP
       #
-      # IMPORTANT:
-      # Do NOT print the complete OIDC token.
+      # This shows the OIDC claims that GitHub sends to AWS.
+      # We need this to fix the IAM Trust Relationship.
+      #
+      # DO NOT PRINT THE COMPLETE OIDC TOKEN.
       #
       # ======================================================
 
@@ -109,6 +122,10 @@ jobs:
       # ======================================================
       # CONFIGURE AWS CREDENTIALS
       # ======================================================
+      #
+      # GitHub uses OIDC to assume the AWS IAM deployment role.
+      #
+      # ======================================================
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -124,11 +141,12 @@ jobs:
       - name: Verify AWS identity
         run: |
           echo "AWS authentication successful."
+
           aws sts get-caller-identity
 
 
       # ======================================================
-      # DEPLOY TO EC2 USING SSM
+      # DEPLOY TO EC2 USING AWS SSM
       # ======================================================
 
       - name: Deploy to EC2 using SSM
@@ -141,7 +159,7 @@ jobs:
 
 
           # --------------------------------------------------
-          # Send deployment command to EC2 instances
+          # Send deployment command to EC2
           # --------------------------------------------------
 
           COMMAND_ID=$(aws ssm send-command \
@@ -179,7 +197,12 @@ jobs:
             --output text)
 
 
+          # --------------------------------------------------
+          # Display SSM command ID
+          # --------------------------------------------------
+
           echo "SSM Command ID: $COMMAND_ID"
+
 
           echo "=========================================="
           echo "Waiting for deployment to complete..."
@@ -187,7 +210,7 @@ jobs:
 
 
           # ==================================================
-          # WAIT FOR SSM DEPLOYMENT
+          # WAIT FOR SSM COMMAND
           # ==================================================
 
           while true; do
@@ -197,6 +220,7 @@ jobs:
               --details \
               --query "CommandInvocations[*].Status" \
               --output text)
+
 
             echo "Current deployment status:"
             echo "$STATUS_OUTPUT"
@@ -210,26 +234,31 @@ jobs:
               "Failed|TimedOut|Cancelled|Cancelling"; then
 
               echo "=========================================="
-              echo "Deployment FAILED"
+              echo "DEPLOYMENT FAILED"
               echo "=========================================="
 
+
               echo "Fetching deployment details..."
+
 
               aws ssm list-command-invocations \
                 --command-id "$COMMAND_ID" \
                 --details
 
+
               exit 1
+
             fi
 
 
             # ------------------------------------------------
-            # Check whether deployment succeeded
+            # Check whether deployment completed
             # ------------------------------------------------
 
             if [ -n "$STATUS_OUTPUT" ] && \
               ! echo "$STATUS_OUTPUT" | grep -qE \
               "Pending|InProgress|Delayed|Cancelling"; then
+
 
               if ! echo "$STATUS_OUTPUT" | grep -q "Success"; then
 
@@ -237,24 +266,29 @@ jobs:
                 echo "Deployment did not complete successfully."
                 echo "=========================================="
 
+
                 aws ssm list-command-invocations \
                   --command-id "$COMMAND_ID" \
                   --details
+
 
                 exit 1
 
               fi
 
+
               echo "=========================================="
               echo "Deployment completed successfully"
               echo "=========================================="
 
+
               break
+
             fi
 
 
             # ------------------------------------------------
-            # Wait before checking again
+            # Wait 10 seconds before checking again
             # ------------------------------------------------
 
             sleep 10
@@ -276,6 +310,7 @@ jobs:
           echo ""
 
           echo "Deployment flow:"
+          echo ""
           echo "GitHub"
           echo "   ↓"
           echo "GitHub Actions"
