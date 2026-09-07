@@ -7,62 +7,85 @@ on:
 
   workflow_dispatch:
 
+# Permissions required for GitHub OIDC
 permissions:
   contents: read
   id-token: write
 
+
 jobs:
 
-  # =========================
-  # CI
-  # =========================
+  # =========================================================
+  # CI - BUILD AND VALIDATE
+  # =========================================================
   test:
     name: Build and Validate
     runs-on: ubuntu-latest
 
     steps:
 
+      # 1. Download repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # 3. Install dependencies
       - name: Install dependencies
         run: npm ci
 
+      # 4. Check JavaScript syntax
       - name: Check server.js syntax
         run: node --check server.js
 
+      # 5. Run tests if a test script exists
       - name: Run tests if available
         run: npm test --if-present
 
 
-  # =========================
-  # CD
-  # =========================
+  # =========================================================
+  # CD - DEPLOY TO EC2
+  # =========================================================
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
+    # CD starts only when CI succeeds
     needs: test
 
     steps:
 
+      # -----------------------------------------------------
+      # 1. Authenticate GitHub Actions with AWS using OIDC
+      # -----------------------------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
 
-      - name: Verify AWS identity
-        run: aws sts get-caller-identity
 
+      # -----------------------------------------------------
+      # 2. Verify AWS authentication
+      # -----------------------------------------------------
+      - name: Verify AWS identity
+        run: |
+          aws sts get-caller-identity
+
+
+      # -----------------------------------------------------
+      # 3. Deploy application using AWS Systems Manager
+      # -----------------------------------------------------
       - name: Deploy to EC2 using SSM
         run: |
+
+          echo "Starting deployment..."
+
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
             --targets "Key=tag:App,Values=student-registration-portal" \
@@ -70,38 +93,72 @@ jobs:
             --max-errors "0" \
             --parameters 'commands=[
               "cd /home/ssm-user/HA-Web/student-registration-portal",
+              "echo Pulling latest code from GitHub...",
               "git pull origin main",
+              "echo Installing production dependencies...",
               "/usr/bin/npm install --production",
+              "echo Restarting application...",
               "sudo systemctl restart student-registration.service",
+              "echo Waiting for application to start...",
               "sleep 10",
+              "echo Checking application health...",
               "curl -f http://localhost:3000/api/health"
             ]' \
-            --comment "GitHub Actions deployment" \
+            --comment "GitHub Actions deployment of Student Registration Portal" \
             --query "Command.CommandId" \
             --output text)
 
           echo "SSM Command ID: $COMMAND_ID"
+
           echo "Waiting for deployment to complete..."
+
+
+          # -------------------------------------------------
+          # Wait for SSM command result
+          # -------------------------------------------------
 
           while true; do
 
             STATUS=$(aws ssm list-command-invocations \
               --command-id "$COMMAND_ID" \
+              --details \
               --query "CommandInvocations[*].Status" \
               --output text)
 
-            echo "Current status: $STATUS"
+            echo "Current deployment status: $STATUS"
 
+
+            # Deployment failed
             if echo "$STATUS" | grep -qE "Failed|TimedOut|Cancelled|Cancelling"; then
+
               echo "Deployment failed."
+
               exit 1
+
             fi
 
+
+            # Deployment successful
             if echo "$STATUS" | grep -q "Success"; then
+
               echo "Deployment completed successfully."
+
               break
+
             fi
 
+
+            # Continue waiting
             sleep 10
 
           done
+
+
+      # -----------------------------------------------------
+      # 4. Deployment completed
+      # -----------------------------------------------------
+      - name: Deployment successful
+        run: |
+          echo "=========================================="
+          echo "Student Registration Portal deployed!"
+          echo "=========================================="
