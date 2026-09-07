@@ -7,62 +7,77 @@ on:
 
   workflow_dispatch:
 
-# Permissions required for GitHub OIDC
+# Required for GitHub OIDC
 permissions:
   contents: read
   id-token: write
 
 
-jobs:
+# ============================================================
+# CI JOB
+# ============================================================
 
-  # =========================================================
-  # CI - BUILD AND VALIDATE
-  # =========================================================
+jobs:
   test:
     name: Build and Validate
     runs-on: ubuntu-latest
 
     steps:
 
-      # 1. Download repository code
+      # --------------------------------------------------------
+      # Checkout GitHub repository
+      # --------------------------------------------------------
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
+
+      # --------------------------------------------------------
+      # Setup Node.js
+      # --------------------------------------------------------
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # 3. Install dependencies
+
+      # --------------------------------------------------------
+      # Install dependencies
+      # --------------------------------------------------------
       - name: Install dependencies
         run: npm ci
 
-      # 4. Check JavaScript syntax
+
+      # --------------------------------------------------------
+      # Check JavaScript syntax
+      # --------------------------------------------------------
       - name: Check server.js syntax
         run: node --check server.js
 
-      # 5. Run tests if a test script exists
+
+      # --------------------------------------------------------
+      # Run tests if package.json contains tests
+      # --------------------------------------------------------
       - name: Run tests if available
         run: npm test --if-present
 
 
-  # =========================================================
-  # CD - DEPLOY TO EC2
-  # =========================================================
+# ============================================================
+# CD JOB
+# ============================================================
+
   deploy:
     name: Deploy to EC2
     runs-on: ubuntu-latest
 
-    # CD starts only when CI succeeds
+    # Deployment only happens if CI succeeds
     needs: test
 
     steps:
 
-      # -----------------------------------------------------
-      # 1. Authenticate GitHub Actions with AWS using OIDC
-      # -----------------------------------------------------
+      # --------------------------------------------------------
+      # Configure AWS credentials using GitHub OIDC
+      # --------------------------------------------------------
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -70,21 +85,25 @@ jobs:
           aws-region: ${{ vars.AWS_REGION }}
 
 
-      # -----------------------------------------------------
-      # 2. Verify AWS authentication
-      # -----------------------------------------------------
+      # --------------------------------------------------------
+      # Verify that GitHub successfully authenticated with AWS
+      # --------------------------------------------------------
       - name: Verify AWS identity
         run: |
+          echo "AWS authentication successful."
           aws sts get-caller-identity
 
 
-      # -----------------------------------------------------
-      # 3. Deploy application using AWS Systems Manager
-      # -----------------------------------------------------
+      # --------------------------------------------------------
+      # Deploy application using AWS Systems Manager
+      # --------------------------------------------------------
       - name: Deploy to EC2 using SSM
+        shell: bash
         run: |
 
-          echo "Starting deployment..."
+          echo "=========================================="
+          echo "Starting deployment"
+          echo "=========================================="
 
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -92,17 +111,29 @@ jobs:
             --max-concurrency "1" \
             --max-errors "0" \
             --parameters 'commands=[
+              "set -e",
+              "echo ==========================================",
+              "echo Deployment started on $(hostname)",
+              "echo ==========================================",
               "cd /home/ssm-user/HA-Web/student-registration-portal",
+              "echo Current directory:",
+              "pwd",
               "echo Pulling latest code from GitHub...",
-              "git pull origin main",
+              "git fetch origin",
+              "git reset --hard origin/main",
               "echo Installing production dependencies...",
               "/usr/bin/npm install --production",
-              "echo Restarting application...",
+              "echo Restarting Student Registration Portal...",
               "sudo systemctl restart student-registration.service",
               "echo Waiting for application to start...",
               "sleep 10",
+              "echo Checking systemd service...",
+              "sudo systemctl is-active student-registration.service",
               "echo Checking application health...",
-              "curl -f http://localhost:3000/api/health"
+              "curl -f http://localhost:3000/api/health",
+              "echo ==========================================",
+              "echo Deployment successful on $(hostname)",
+              "echo =========================================="
             ]' \
             --comment "GitHub Actions deployment of Student Registration Portal" \
             --query "Command.CommandId" \
@@ -110,55 +141,108 @@ jobs:
 
           echo "SSM Command ID: $COMMAND_ID"
 
+          echo "=========================================="
           echo "Waiting for deployment to complete..."
+          echo "=========================================="
 
 
-          # -------------------------------------------------
-          # Wait for SSM command result
-          # -------------------------------------------------
+          # ----------------------------------------------------
+          # Wait until SSM finishes
+          # ----------------------------------------------------
 
           while true; do
 
-            STATUS=$(aws ssm list-command-invocations \
+            STATUS_OUTPUT=$(aws ssm list-command-invocations \
               --command-id "$COMMAND_ID" \
               --details \
               --query "CommandInvocations[*].Status" \
               --output text)
 
-            echo "Current deployment status: $STATUS"
+            echo "Current deployment status:"
+            echo "$STATUS_OUTPUT"
 
 
-            # Deployment failed
-            if echo "$STATUS" | grep -qE "Failed|TimedOut|Cancelled|Cancelling"; then
+            # ------------------------------------------------
+            # Check for failure
+            # ------------------------------------------------
 
-              echo "Deployment failed."
+            if echo "$STATUS_OUTPUT" | grep -qE \
+              "Failed|TimedOut|Cancelled|Cancelling"; then
+
+              echo "=========================================="
+              echo "Deployment FAILED"
+              echo "=========================================="
+
+              echo "Fetching deployment details..."
+
+              aws ssm list-command-invocations \
+                --command-id "$COMMAND_ID" \
+                --details
 
               exit 1
-
             fi
 
 
-            # Deployment successful
-            if echo "$STATUS" | grep -q "Success"; then
+            # ------------------------------------------------
+            # Check whether all commands succeeded
+            # ------------------------------------------------
 
-              echo "Deployment completed successfully."
+            if [ -n "$STATUS_OUTPUT" ] && \
+               ! echo "$STATUS_OUTPUT" | grep -qE \
+               "Pending|InProgress|Delayed|Cancelling"; then
+
+              if ! echo "$STATUS_OUTPUT" | grep -q "Success"; then
+
+                echo "Deployment did not complete successfully."
+
+                aws ssm list-command-invocations \
+                  --command-id "$COMMAND_ID" \
+                  --details
+
+                exit 1
+
+              fi
+
+              echo "=========================================="
+              echo "Deployment completed successfully"
+              echo "=========================================="
 
               break
-
             fi
 
 
-            # Continue waiting
+            # ------------------------------------------------
+            # Wait before checking again
+            # ------------------------------------------------
+
             sleep 10
 
           done
 
 
-      # -----------------------------------------------------
-      # 4. Deployment completed
-      # -----------------------------------------------------
+      # --------------------------------------------------------
+      # Final success message
+      # --------------------------------------------------------
       - name: Deployment successful
         run: |
+          echo ""
           echo "=========================================="
-          echo "Student Registration Portal deployed!"
+          echo " Student Registration Portal Deployed!"
           echo "=========================================="
+          echo ""
+          echo "Deployment flow:"
+          echo "GitHub"
+          echo "   ↓"
+          echo "GitHub Actions"
+          echo "   ↓"
+          echo "OIDC"
+          echo "   ↓"
+          echo "AWS IAM Role"
+          echo "   ↓"
+          echo "AWS Systems Manager"
+          echo "   ↓"
+          echo "EC2 instances in ASG"
+          echo "   ↓"
+          echo "Node.js Application"
+          echo ""
+          echo "Deployment completed successfully."
