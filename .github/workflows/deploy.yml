@@ -7,33 +7,101 @@ on:
 
   workflow_dispatch:
 
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
+
+  # =========================
+  # CI
+  # =========================
   test:
     name: Build and Validate
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Download the repository code
+
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 2. Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
-      # 3. Install project dependencies
       - name: Install dependencies
         run: npm ci
 
-      # 4. Check JavaScript syntax
       - name: Check server.js syntax
         run: node --check server.js
 
-      # 5. Run tests if a test script exists
-      #    Currently your project has no test script,
-      #    so this will simply be skipped.
       - name: Run tests if available
         run: npm test --if-present
+
+
+  # =========================
+  # CD
+  # =========================
+  deploy:
+    name: Deploy to EC2
+    runs-on: ubuntu-latest
+
+    needs: test
+
+    steps:
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verify AWS identity
+        run: aws sts get-caller-identity
+
+      - name: Deploy to EC2 using SSM
+        run: |
+          COMMAND_ID=$(aws ssm send-command \
+            --document-name "AWS-RunShellScript" \
+            --targets "Key=tag:App,Values=student-registration-portal" \
+            --max-concurrency "1" \
+            --max-errors "0" \
+            --parameters 'commands=[
+              "cd /home/ssm-user/HA-Web/student-registration-portal",
+              "git pull origin main",
+              "/usr/bin/npm install --production",
+              "sudo systemctl restart student-registration.service",
+              "sleep 10",
+              "curl -f http://localhost:3000/api/health"
+            ]' \
+            --comment "GitHub Actions deployment" \
+            --query "Command.CommandId" \
+            --output text)
+
+          echo "SSM Command ID: $COMMAND_ID"
+          echo "Waiting for deployment to complete..."
+
+          while true; do
+
+            STATUS=$(aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --query "CommandInvocations[*].Status" \
+              --output text)
+
+            echo "Current status: $STATUS"
+
+            if echo "$STATUS" | grep -qE "Failed|TimedOut|Cancelled|Cancelling"; then
+              echo "Deployment failed."
+              exit 1
+            fi
+
+            if echo "$STATUS" | grep -q "Success"; then
+              echo "Deployment completed successfully."
+              break
+            fi
+
+            sleep 10
+
+          done
