@@ -5,23 +5,35 @@ on:
     branches:
       - main
 
+  workflow_dispatch:
+
 jobs:
   test:
-    name: Build and Test
+    name: Build and Validate
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Download the repository code
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # 2. Install Node.js
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
 
+      # 3. Install project dependencies
       - name: Install dependencies
         run: npm ci
 
-      - name: Run tests
-        run: npm test
+      # 4. Check JavaScript syntax
+      - name: Check server.js syntax
+        run: node --check server.js
+
+      # 5. Run tests if a test script exists
+      #    Currently your project has no test script,
+      #    so this will simply be skipped.
+      - name: Run tests if available
+        run: npm test --if-present
