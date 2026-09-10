@@ -88,7 +88,15 @@ const pool = mysql.createPool({
    MIDDLEWARE
 ========================================================= */
 
-app.use(helmet());
+app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        "upgrade-insecure-requests": null
+      }
+    }
+  })
+);
 
 app.use(express.json());
 
