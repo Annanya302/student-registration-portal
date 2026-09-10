@@ -11,13 +11,22 @@ permissions:
 
 jobs:
   deploy:
-    name: Deploy to EC2
+    name: Deploy to EC2 Instances
     runs-on: ubuntu-latest
 
     steps:
 
+      # =====================================================
+      # 1. CHECKOUT SOURCE CODE
+      # =====================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # =====================================================
+      # 2. AUTHENTICATE WITH AWS USING OIDC
+      # =====================================================
 
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -25,10 +34,21 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ap-south-1
 
+
+      # =====================================================
+      # 3. VERIFY AWS IDENTITY
+      # =====================================================
+
       - name: Verify AWS identity
         run: |
           echo "===== AWS IDENTITY ====="
+
           aws sts get-caller-identity
+
+
+      # =====================================================
+      # 4. DEPLOY APPLICATION USING AWS SSM
+      # =====================================================
 
       - name: Deploy application using SSM
         shell: bash
@@ -37,9 +57,19 @@ jobs:
           echo "===== PREPARING DEPLOYMENT SCRIPT ====="
 
           DEPLOY_SCRIPT=$(cat <<'EOF'
+
           set -e
 
+          # =================================================
+          # APPLICATION DIRECTORY
+          # =================================================
+
           APP_DIR="/home/ssm-user/HA-Web/student-registration-portal"
+
+
+          # =================================================
+          # INSTANCE INFORMATION
+          # =================================================
 
           echo "===== INSTANCE ====="
 
@@ -51,49 +81,195 @@ jobs:
             -H "X-aws-ec2-metadata-token: $TOKEN" \
             http://169.254.169.254/latest/meta-data/instance-id)
 
-          echo "$INSTANCE_ID"
+          echo "Instance ID: $INSTANCE_ID"
+
+
+          # =================================================
+          # APPLICATION DIRECTORY
+          # =================================================
 
           echo "===== APPLICATION ====="
 
           cd "$APP_DIR"
 
+          echo "Application directory:"
+          pwd
+
+
+          # =================================================
+          # FETCH LATEST CODE
+          # =================================================
+
           echo "===== FETCH GITHUB ====="
 
           sudo -u ssm-user git fetch origin
+
+
+          # =================================================
+          # SYNCHRONIZE WITH MAIN BRANCH
+          # =================================================
 
           echo "===== SYNCHRONIZE MAIN ====="
 
           sudo -u ssm-user git reset --hard origin/main
 
+
+          # =================================================
+          # SHOW CURRENT COMMIT
+          # =================================================
+
+          echo "===== CURRENT COMMIT ====="
+
+          sudo -u ssm-user git rev-parse --short HEAD
+
+
+          # =================================================
+          # INSTALL DEPENDENCIES
+          # =================================================
+
           echo "===== INSTALL DEPENDENCIES ====="
 
           sudo -u ssm-user npm ci
+
+
+          # =================================================
+          # RESTART APPLICATION
+          # =================================================
 
           echo "===== RESTART APPLICATION ====="
 
           sudo -u ssm-user pm2 restart student-registration
 
+
+          # =================================================
+          # WAIT FOR APPLICATION TO BECOME READY
+          # =================================================
+
+          echo "===== WAITING FOR APPLICATION ====="
+
+          HEALTHY=false
+
+          for i in {1..12}; do
+
+            echo "Health check attempt $i/12..."
+
+            if curl -sS -f http://localhost:3000/api/health; then
+
+              echo
+              echo "===== APPLICATION HEALTHY ====="
+
+              HEALTHY=true
+
+              break
+
+            fi
+
+            if [ "$i" -lt 12 ]; then
+
+              echo "Application not ready yet."
+              echo "Waiting 5 seconds..."
+
+              sleep 5
+
+            fi
+
+          done
+
+
+          # =================================================
+          # DEPLOYMENT FAILURE HANDLING
+          # =================================================
+
+          if [ "$HEALTHY" != "true" ]; then
+
+            echo
+            echo "===== APPLICATION FAILED TO BECOME HEALTHY ====="
+
+
+            echo
+            echo "===== PM2 STATUS ====="
+
+            sudo -u ssm-user pm2 status
+
+
+            echo
+            echo "===== PM2 DETAILS ====="
+
+            sudo -u ssm-user pm2 describe student-registration
+
+
+            echo
+            echo "===== PM2 LOGS ====="
+
+            sudo -u ssm-user pm2 logs student-registration \
+              --lines 50 \
+              --nostream
+
+
+            echo
+            echo "===== PORT 3000 ====="
+
+            sudo ss -ltnp | grep ':3000' || true
+
+
+            exit 1
+
+          fi
+
+
+          # =================================================
+          # FINAL PM2 STATUS
+          # =================================================
+
+          echo
           echo "===== PM2 STATUS ====="
 
           sudo -u ssm-user pm2 status
 
-          echo "===== APPLICATION HEALTH ====="
+
+          # =================================================
+          # FINAL HEALTH CHECK
+          # =================================================
+
+          echo
+          echo "===== FINAL APPLICATION HEALTH ====="
 
           curl -sS -f http://localhost:3000/api/health
 
           echo
 
+
+          # =================================================
+          # DEPLOYMENT SUCCESS
+          # =================================================
+
+          echo
           echo "===== DEPLOYMENT SUCCESS ====="
 
-          echo "COMMIT=$(sudo -u ssm-user git rev-parse --short HEAD)"
+          echo "Instance: $INSTANCE_ID"
+
+          echo "Commit: $(sudo -u ssm-user git rev-parse --short HEAD)"
+
           EOF
           )
 
-          echo "===== SENDING COMMAND TO EC2 INSTANCES ====="
+
+          # =====================================================
+          # PREPARE SSM PARAMETERS
+          # =====================================================
+
+          echo "===== PREPARING SSM PARAMETERS ====="
 
           PARAMETERS=$(jq -n \
             --arg script "$DEPLOY_SCRIPT" \
             '{commands: [$script]}')
+
+
+          # =====================================================
+          # SEND COMMAND TO ALL ASG EC2 INSTANCES
+          # =====================================================
+
+          echo "===== SENDING COMMAND TO EC2 INSTANCES ====="
 
           COMMAND_ID=$(aws ssm send-command \
             --document-name "AWS-RunShellScript" \
@@ -105,12 +281,23 @@ jobs:
 
           echo "COMMAND_ID=$COMMAND_ID"
 
+
+          # =====================================================
+          # WAIT FOR DEPLOYMENT
+          # =====================================================
+
+          echo
           echo "===== WAITING FOR EC2 DEPLOYMENT ====="
+
+
+          DEPLOYMENT_COMPLETED=false
+
 
           for i in {1..30}; do
 
             echo
-            echo "----- CHECK $i -----"
+            echo "----- CHECK $i/30 -----"
+
 
             aws ssm list-command-invocations \
               --command-id "$COMMAND_ID" \
@@ -118,34 +305,84 @@ jobs:
               --query 'CommandInvocations[].{InstanceId:InstanceId,Status:Status}' \
               --output table
 
+
             STATUSES=$(aws ssm list-command-invocations \
               --command-id "$COMMAND_ID" \
               --details \
               --query 'CommandInvocations[].Status' \
               --output text)
 
+
             if [ -z "$STATUSES" ]; then
+
               echo "Waiting for SSM invocations..."
+
               sleep 10
+
               continue
+
             fi
 
+
+            echo
             echo "Current statuses:"
             echo "$STATUSES"
 
-            if echo "$STATUSES" | grep -Eq 'Failed|Cancelled|TimedOut|Cancelling|Undeliverable|Terminated'; then
+
+            # =================================================
+            # CHECK FOR FAILURE
+            # =================================================
+
+            if echo "$STATUSES" | grep -Eq \
+              'Failed|Cancelled|TimedOut|Cancelling|Undeliverable|Terminated'; then
+
+              echo
               echo "===== DEPLOYMENT FAILED ====="
+
               exit 1
+
             fi
 
-            if ! echo "$STATUSES" | grep -Eq 'Pending|InProgress|Delayed'; then
+
+            # =================================================
+            # CHECK WHETHER ALL INSTANCES FINISHED
+            # =================================================
+
+            if ! echo "$STATUSES" | grep -Eq \
+              'Pending|InProgress|Delayed'; then
+
+              echo
               echo "===== ALL EC2 DEPLOYMENTS COMPLETED ====="
+
+              DEPLOYMENT_COMPLETED=true
+
               break
+
             fi
+
 
             sleep 10
 
           done
+
+
+          # =====================================================
+          # DEPLOYMENT TIMEOUT
+          # =====================================================
+
+          if [ "$DEPLOYMENT_COMPLETED" != "true" ]; then
+
+            echo
+            echo "===== DEPLOYMENT TIMEOUT ====="
+
+            exit 1
+
+          fi
+
+
+          # =====================================================
+          # FINAL SSM RESULTS
+          # =====================================================
 
           echo
           echo "===== FINAL SSM RESULTS ====="
@@ -156,20 +393,41 @@ jobs:
             --query 'CommandInvocations[].{InstanceId:InstanceId,Status:Status}' \
             --output table
 
+
+          # =====================================================
+          # FINAL STATUS VALIDATION
+          # =====================================================
+
           FINAL_STATUSES=$(aws ssm list-command-invocations \
             --command-id "$COMMAND_ID" \
             --details \
             --query 'CommandInvocations[].Status' \
             --output text)
 
-          if echo "$FINAL_STATUSES" | grep -Eq 'Pending|InProgress|Delayed'; then
-            echo "===== DEPLOYMENT TIMEOUT ====="
-            exit 1
-          fi
 
-          if echo "$FINAL_STATUSES" | grep -Eq 'Failed|Cancelled|TimedOut|Cancelling|Undeliverable|Terminated'; then
+          if echo "$FINAL_STATUSES" | grep -Eq \
+            'Failed|Cancelled|TimedOut|Cancelling|Undeliverable|Terminated'; then
+
+            echo
             echo "===== DEPLOYMENT FAILED ====="
+
             exit 1
+
           fi
 
-          echo "===== DEPLOYMENT SUCCESS ====="
+
+          if echo "$FINAL_STATUSES" | grep -Eq \
+            'Pending|InProgress|Delayed'; then
+
+            echo
+            echo "===== DEPLOYMENT STILL RUNNING ====="
+
+            exit 1
+
+          fi
+
+
+          echo
+          echo "========================================="
+          echo "===== CI/CD DEPLOYMENT SUCCESSFUL ====="
+          echo "========================================="
